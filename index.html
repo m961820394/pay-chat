@@ -1,0 +1,164 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Premium Assistant — MMLJC</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500&family=Playfair+Display:wght@500&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #F8F6F2; --surface: #FFFFFF; --black: #111010;
+      --red: #C8102E; --border: #E8E4DE; --muted: #9A9A9A;
+    }
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: var(--bg); font-family: 'DM Sans', sans-serif; display: flex; flex-direction: column; min-height: 100vh; }
+    
+    /* ── HEADER ── */
+    header { display: flex; align-items: center; justify-content: space-between; padding: 28px 60px; border-bottom: 1px solid var(--border); background: var(--surface); }
+    .logo { font-family: 'Playfair Display', serif; font-size: 1.15rem; text-decoration: none; color: var(--black); }
+    .logo span { color: var(--red); }
+    
+    .nav-link { font-size: .72rem; font-weight: 500; color: var(--black); text-decoration: none; letter-spacing: .12em; transition: color .3s; }
+    .nav-link:hover { color: var(--red); }
+
+    main { flex: 1; display: flex; flex-direction: column; align-items: center; padding: 60px 24px; max-width: 900px; margin: 0 auto; width: 100%; }
+    .chat-header { text-align: center; margin-bottom: 40px; }
+    .chat-header h1 { font-family: 'Playfair Display', serif; font-size: 2.5rem; color: var(--red); }
+    .chat-header p { font-size: .7rem; color: var(--muted); text-transform: uppercase; letter-spacing: .15em; margin-top: 8px; }
+
+    /* ── CHAT WINDOW (红色边框) ── */
+    .chat-window { 
+      width: 100%; background: var(--surface); 
+      border: 1px solid var(--red); 
+      border-radius: 24px; height: 65vh; 
+      display: flex; flex-direction: column; 
+      box-shadow: 0 10px 40px rgba(200,16,46,.06); overflow: hidden; 
+    }
+    #chat-box { flex: 1; overflow-y: auto; padding: 40px; display: flex; flex-direction: column; gap: 24px; scroll-behavior: smooth; }
+
+    .msg { max-width: 85%; padding: 16px 24px; font-size: .95rem; line-height: 1.6; border-radius: 18px; }
+    .msg.ai { align-self: flex-start; background: var(--bg); border-bottom-left-radius: 4px; }
+    .msg.user { align-self: flex-end; background: var(--black); color: #FFF; border-bottom-right-radius: 4px; }
+
+    /* ── INPUT AREA ── */
+    .input-area { padding: 24px 40px; border-top: 1px solid var(--border); display: flex; align-items: center; gap: 16px; background: var(--surface); }
+    .upload-btn { cursor: pointer; color: var(--muted); transition: .3s; display: flex; }
+    .upload-btn:hover { color: var(--red); transform: scale(1.1); }
+
+    input[type="text"] { flex: 1; background: var(--bg); border: 1px solid var(--border); padding: 14px 20px; border-radius: 999px; outline: none; transition: .3s; }
+    input[type="text"]:focus { border-color: var(--red); }
+
+    /* 红色发送键 */
+    .send-btn { background: var(--red); color: #fff; border: none; border-radius: 999px; padding: 12px 28px; font-size: .78rem; font-weight: 500; cursor: pointer; transition: opacity .2s; }
+    .send-btn:hover { opacity: 0.85; }
+    .send-btn:disabled { background: var(--muted); cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+<header>
+  <a href="/" class="logo">MM<span>LJC</span></a>
+  <a href="https://mmljc.com" class="nav-link">HOME</a>
+</header>
+
+<main>
+  <div class="chat-header">
+    <h1>Premium <em>Assistant.</em></h1>
+    <p>GCP Private Node Connection (Ollama)</p>
+  </div>
+
+  <div class="chat-window">
+    <div id="chat-box">
+      <div class="msg ai">已建立私有加密隧道。您现在正直接与 GCP 节点的 Ollama 模型对话。</div>
+    </div>
+
+    <div class="input-area">
+      <label class="upload-btn">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+        <input type="file" style="display:none">
+      </label>
+      <input type="text" id="userInput" placeholder="Run local model commands..." onkeypress="if(event.keyCode==13) sendMessage()">
+      <button class="send-btn" id="sendBtn" onclick="sendMessage()">SEND</button>
+    </div>
+  </div>
+</main>
+
+<script>
+  // 这里填你新建立的那个专用于 GCP 的 Worker 地址
+  const WORKER_URL = 'https://你的新Worker名字.workers.dev/';
+
+  async function sendMessage() {
+    const input = document.getElementById('userInput');
+    const text = input.value.trim();
+    if (!text) return;
+
+    appendMessage('user', text);
+    input.value = '';
+
+    const sendBtn = document.getElementById('sendBtn');
+    sendBtn.disabled = true;
+
+    const aiDiv = createAiBubble();
+    let fullReply = '';
+
+    try {
+      const response = await fetch(WORKER_URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: [{ role: "user", content: text }] })
+      });
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const chunk = decoder.decode(value);
+        const lines = chunk.split('\n');
+        
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          try {
+            // Ollama 每一行都是一个独立的 JSON
+            const parsed = JSON.parse(line);
+            const content = parsed.message?.content;
+            if (content) {
+              fullReply += content;
+              aiDiv.innerText = fullReply;
+              document.getElementById('chat-box').scrollTop = document.getElementById('chat-box').scrollHeight;
+            }
+          } catch (e) {
+            console.log("解析流片段失败", e);
+          }
+        }
+      }
+    } catch (e) {
+      aiDiv.innerText = "Error: GCP 私有节点连接中断。";
+    } finally {
+      sendBtn.disabled = false;
+    }
+  }
+
+  function createAiBubble() {
+    const box = document.getElementById('chat-box');
+    const div = document.createElement('div');
+    div.className = 'msg ai';
+    div.innerText = '▍';
+    box.appendChild(div);
+    return div;
+  }
+
+  function appendMessage(role, text) {
+    const box = document.getElementById('chat-box');
+    const div = document.createElement('div');
+    div.className = `msg ${role}`;
+    div.innerText = text;
+    box.appendChild(div);
+    box.scrollTop = box.scrollHeight;
+  }
+</script>
+</body>
+</html>
